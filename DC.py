@@ -35,33 +35,33 @@ class UDPPacketSender:
             ipaddress.ip_address(target_ip)
             self.target_ip = target_ip
         except ValueError:
-            print(f"Error: Invalid IP address: {target_ip}")
+            print("Error: Invalid IP address: %s" % target_ip)
             sys.exit(1)
             
         # Validate port
         if not (1 <= target_port <= 65535):
-            print(f"Error: Port must be between 1-65535, got {target_port}")
+            print("Error: Port must be between 1-65535, got %d" % target_port)
             sys.exit(1)
             
         self.target_port = target_port
         
         # Validate packet size (with reasonable limits)
         if not (16 <= packet_size <= 1472):  # Max UDP payload in standard Ethernet
-            print(f"Error: Packet size must be between 16-1472 bytes, got {packet_size}")
+            print("Error: Packet size must be between 16-1472 bytes, got %d" % packet_size)
             sys.exit(1)
             
         self.packet_size = packet_size
         
         # Validate delay (prevent flooding)
         if delay < 0.1:  # Enforce minimum delay of 100ms
-            print(f"Warning: Minimum delay is 0.1 seconds. Setting delay to 0.1.")
+            print("Warning: Minimum delay is 0.1 seconds. Setting delay to 0.1.")
             self.delay = 0.1
         else:
             self.delay = delay
             
         # Validate count (with reasonable limits)
         if count > 100:  # Limit maximum packets for safety
-            print(f"Warning: Maximum packet count is 100. Setting count to 100.")
+            print("Warning: Maximum packet count is 100. Setting count to 100.")
             self.count = 100
         else:
             self.count = count
@@ -82,9 +82,9 @@ class UDPPacketSender:
         """Create UDP socket."""
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            print(f"Socket created successfully")
+            print("Socket created successfully")
         except socket.error as e:
-            print(f"Socket creation failed: {e}")
+            print("Socket creation failed: %s" % e)
             sys.exit(1)
     
     def send_packets(self):
@@ -93,8 +93,8 @@ class UDPPacketSender:
             self.connect()
             
         print("\nETHICAL REMINDER: Only use on systems you own or have permission to test!\n")
-        print(f"Starting UDP packet sending to {self.target_ip}:{self.target_port}")
-        print(f"Packet size: {self.packet_size} bytes, Delay: {self.delay}s, Count: {self.count}")
+        print("Starting UDP packet sending to %s:%d" % (self.target_ip, self.target_port))
+        print("Packet size: %d bytes, Delay: %.1fs, Count: %d" % (self.packet_size, self.delay, self.count))
         print("-" * 60)
         
         start_time = time.time()
@@ -106,8 +106,7 @@ class UDPPacketSender:
                 self.packets_sent += 1
                 
                 # Print progress
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] Packet {i+1}/{self.count} sent "
-                      f"({len(packet)} bytes)")
+                print("[%s] Packet %d/%d sent (%d bytes)" % (datetime.now().strftime('%H:%M:%S'), i+1, self.count, len(packet)))
                 
                 # Respect the delay to prevent flooding
                 time.sleep(self.delay)
@@ -115,7 +114,7 @@ class UDPPacketSender:
         except KeyboardInterrupt:
             print("\nPacket sending interrupted by user")
         except Exception as e:
-            print(f"\nError sending packets: {e}")
+            print("\nError sending packets: %s" % e)
         finally:
             elapsed_time = time.time() - start_time
             self.print_summary(elapsed_time)
@@ -125,14 +124,14 @@ class UDPPacketSender:
         """Print summary of the packet sending operation."""
         print("\n" + "=" * 60)
         print("UDP Packet Sending Summary:")
-        print(f"Target: {self.target_ip}:{self.target_port}")
-        print(f"Packets sent: {self.packets_sent}")
-        print(f"Packet size: {self.packet_size} bytes")
-        print(f"Total data sent: {self.packets_sent * self.packet_size} bytes")
-        print(f"Time elapsed: {elapsed_time:.2f} seconds")
+        print("Target: %s:%d" % (self.target_ip, self.target_port))
+        print("Packets sent: %d" % self.packets_sent)
+        print("Packet size: %d bytes" % self.packet_size)
+        print("Total data sent: %d bytes" % (self.packets_sent * self.packet_size))
+        print("Time elapsed: %.2f seconds" % elapsed_time)
         if elapsed_time > 0:
             rate = (self.packets_sent * self.packet_size * 8) / (elapsed_time * 1000)
-            print(f"Average sending rate: {rate:.2f} kbps")
+            print("Average sending rate: %.2f kbps" % rate)
         print("=" * 60)
     
     def close(self):
@@ -148,10 +147,10 @@ def validate_positive(value_type):
         try:
             ivalue = int(value)
             if ivalue <= 0:
-                raise argparse.ArgumentTypeError(f"{value_type} must be positive")
+                raise argparse.ArgumentTypeError("%s must be positive" % value_type)
             return ivalue
         except ValueError:
-            raise argparse.ArgumentTypeError(f"{value_type} must be an integer")
+            raise argparse.ArgumentTypeError("%s must be an integer" % value_type)
     return validate
 
 
@@ -161,10 +160,10 @@ def validate_float_positive(value_type):
         try:
             fvalue = float(value)
             if fvalue <= 0:
-                raise argparse.ArgumentTypeError(f"{value_type} must be positive")
+                raise argparse.ArgumentTypeError("%s must be positive" % value_type)
             return fvalue
         except ValueError:
-            raise argparse.ArgumentTypeError(f"{value_type} must be a number")
+            raise argparse.ArgumentTypeError("%s must be a number" % value_type)
     return validate
 
 
