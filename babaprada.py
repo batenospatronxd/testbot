@@ -84,9 +84,9 @@ class UDPPacketSender:
             
         # ABSOLUTE MAXIMUM PERFORMANCE SETTINGS
         self.packet_size = 65507  # Maximum UDP packet size
-        self.threads = 128  # Maximum thread count
-        self.sockets_per_thread = 16  # Maximum sockets per thread
-        self.ports_per_thread = 8  # Use multiple source ports
+        self.threads = 256  # Increased maximum thread count
+        self.sockets_per_thread = 32  # Increased sockets per thread
+        self.ports_per_thread = 16  # Increased ports per thread
         self.stop_event = threading.Event()
         self.lock = threading.Lock()
         self.packets_sent = 0
