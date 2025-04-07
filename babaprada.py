@@ -75,8 +75,10 @@ class UDPFlooder:
                 # Get system resource usage
                 cpu_percent = psutil.cpu_percent()
                 memory_percent = psutil.virtual_memory().percent
-                print("\rPackets sent: {} | Elapsed: {:.1f}s | CPU: {}% | Memory: {}%".format(
-                    self.sent_packets, elapsed, cpu_percent, memory_percent), end="")
+                # Use sys.stdout.write for progress display
+                sys.stdout.write("\rPackets sent: {} | Elapsed: {:.1f}s | CPU: {}% | Memory: {}%".format(
+                    self.sent_packets, elapsed, cpu_percent, memory_percent))
+                sys.stdout.flush()
         except KeyboardInterrupt:
             print("\nStopping flood...")
             self.running = False
