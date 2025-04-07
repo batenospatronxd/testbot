@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 UDP Packet Sender - Educational Tool
 
@@ -17,13 +17,36 @@ The author does not take responsibility for any misuse of this tool.
 Unauthorized network scanning or flooding is illegal in most jurisdictions.
 """
 
+from __future__ import print_function  # For Python 2 compatibility
+
 import socket
 import time
 import argparse
 import sys
 import random
-import ipaddress
 from datetime import datetime
+
+# Python 2/3 compatibility
+PY2 = sys.version_info[0] == 2
+if PY2:
+    input = raw_input
+    # For Python 2, we need to implement our own ip_address validation
+    def ip_address(ip_string):
+        """Simple IP address validation for Python 2."""
+        parts = ip_string.split('.')
+        if len(parts) != 4:
+            raise ValueError("IPv4 address should have 4 parts")
+        for part in parts:
+            try:
+                num = int(part)
+                if num < 0 or num > 255:
+                    raise ValueError("Each part must be 0-255")
+            except ValueError:
+                raise ValueError("Each part must be an integer")
+        return ip_string
+else:
+    # Python 3
+    from ipaddress import ip_address
 
 
 class UDPPacketSender:
@@ -32,7 +55,7 @@ class UDPPacketSender:
         """Initialize the UDP packet sender with target parameters."""
         try:
             # Validate IP address
-            ipaddress.ip_address(target_ip)
+            ip_address(target_ip)
             self.target_ip = target_ip
         except ValueError:
             print("Error: Invalid IP address: %s" % target_ip)
@@ -73,10 +96,16 @@ class UDPPacketSender:
     def generate_packet(self):
         """Generate packet data of specified size."""
         if self.random_data:
-            return bytes(random.randint(0, 255) for _ in range(self.packet_size))
+            if PY2:
+                return ''.join(chr(random.randint(0, 255)) for _ in range(self.packet_size))
+            else:
+                return bytes(random.randint(0, 255) for _ in range(self.packet_size))
         else:
             # Create a recognizable pattern for educational purposes
-            return b'X' * self.packet_size
+            if PY2:
+                return 'X' * self.packet_size
+            else:
+                return b'X' * self.packet_size
     
     def connect(self):
         """Create UDP socket."""
