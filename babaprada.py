@@ -82,11 +82,11 @@ class UDPPacketSender:
             print("Error: Duration must be a number")
             sys.exit(1)
             
-        # ABSOLUTE MAXIMUM PERFORMANCE SETTINGS
+        # ABSOLUTE MAXIMUM PERFORMANCE SETTINGS - NO NETWORK LIMITS
         self.packet_size = 65507  # Maximum UDP packet size
-        self.threads = 256  # Increased maximum thread count
-        self.sockets_per_thread = 32  # Increased sockets per thread
-        self.ports_per_thread = 16  # Increased ports per thread
+        self.threads = 512  # Extreme thread count for network saturation
+        self.sockets_per_thread = 64  # Maximum sockets for bandwidth utilization
+        self.ports_per_thread = 32  # Maximum source ports for network throughput
         self.stop_event = threading.Event()
         self.lock = threading.Lock()
         self.packets_sent = 0
@@ -120,23 +120,27 @@ class UDPPacketSender:
         """Create an optimized UDP socket."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         
-        # Maximum performance socket options
+        # Maximum performance socket options - No limits
         try:
-            # Set the largest possible send buffer
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 16777216)  # 16MB buffer
+            # Set maximum possible send buffer
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 33554432)  # Increased to 32MB buffer
             
             # Set low delay
             sock.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 0x10)  # LOWDELAY
             
-            # Disable blocking
+            # Disable blocking for maximum speed
             sock.setblocking(0)
             
-            # Try additional performance options
+            # Maximum priority
             if hasattr(socket, 'SO_PRIORITY'):
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_PRIORITY, 7)  # Highest priority
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_PRIORITY, 7)
+                
+            # Try to set NODELAY
+            if hasattr(socket, 'TCP_NODELAY'):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 
         except:
-            pass  # Ignore any errors in socket options
+            pass  # Ignore any errors - continue at maximum speed
             
         return sock
     
